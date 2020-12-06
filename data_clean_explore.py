@@ -8,48 +8,36 @@ import matplotlib
 import matplotlib.pyplot as plt
 import plotly.express as px
 import re
+import regex
 # import altair as alt
 import csv
 from sklearn import model_selection
 import itertools
 
-# data2=[]
-# filepath2="sample.json"
-# with open(filepath2) as f:
-#     for line in f:
-#         data2.append(json.loads(line))
-# df=pd.DataFrame(data2)
-# df.to_csv("sample.csv", sep='\t')
-# df2=pd.read_csv("train.csv", sep='\t', nrows=110000)
-# print(df2.shape)
-# df2.head()
-# train_file = df2[:100000]
-# test_file = df2[100000:]
-# train_file.to_csv("train2.csv", sep='\t')
-# train_file.to_csv("test.csv", sep='\t')
+os.chdir('/Users/quinxie/Downloads/csc2515/csc2515-rating-prediction/project2')
 
-# os.chdir('/Users/quinxie/Downloads/csc2515/csc2515-rating-prediction/project2')
-
-# df2=pd.read_csv("data.csv", sep = "\t", index_col=0)
-# print(df2.shape)
-# df2.head()
-# df2.columns
-# # df2 = df2[~pd.isnull(df2['abstract'])]
+df2=pd.read_csv("data.csv", sep = "\t", index_col=0)
+print(df2.shape)
+df2.head()
+df2.columns
+# df2 = df2[~pd.isnull(df2['abstract'])]
 # df4 = df2[:70]
 # # ============================================metadata exploration================================================
 #
 # # clean up author column
-# df2["author"] = df2["author"].apply(lambda x: re.sub(r'\([^)]*\)', '', x))
-# df2["author"] = df2["author"].apply(lambda x: re.sub("\sand\s",",",x))
-# df2["author"] = df2["author"].apply(lambda x: x.split(','))
-# def get_clean(x):
-#     # Remove all characters not in the English alphabet
-#     x = re.sub("[^a-zA-Z]", " ", str(x))
-#     x = str(x).lower()
-#     pattern = re.compile("^\s+|\s*,\s*|\s+$")
-#     return [a for a in pattern.split(x) if a]
-#
-# df2["author"] = df2["author"].apply(lambda x: [get_clean(a) for a in x])
+df2["author_clean"] = df2["author"].apply(lambda x: regex.sub(r'\([^()]*+(?:(?R)[^()]*)*+\)', '', x)) # recursively remove nested parentheses and its content
+df2["author_clean"] = df2["author_clean"].apply(lambda x: re.sub("\sand\s",",",x)) # sub and with comma
+df2["author_clean"] = df2["author_clean"].apply(lambda x: re.sub(", et al","",x)) # sub and with comma
+df2["author_clean"] = df2["author_clean"].apply(lambda x: re.sub('(,){2,}',",",x))
+df2["author_clean"] = df2["author_clean"].apply(lambda x: x.split(','))
+def get_clean(x):
+    # Remove all characters not in the English alphabet
+    x = re.sub("[^\w\s]", "", str(x))#  to remove all special characters other than words and white spaces
+    x = str(x).lower()
+    x = re.sub(r'\s+', ' ',x).strip()
+    return x
+
+df2["author_clean"] = df2["author_clean"].apply(lambda x: [get_clean(a) for a in x if get_clean(a).strip()])
 #
 # # def flatten(s):
 # #     if s == []:
@@ -60,13 +48,14 @@ import itertools
 # #
 # # df2["author"] = df2["author"].apply(lambda x: flatten(x))
 # df2["author"] = df2["author"].apply(lambda x: list(itertools.chain.from_iterable(x)))
-# df2["author_clean"] = df2["author"].apply(lambda x: (",").join(x))
-# df2.to_csv("data_clean_author.csv")
+
+df2["author_clean"] = df2["author_clean"].apply(lambda x: (",").join(x))
+df2.to_csv("data_clean_author.csv", sep = "\t")
 df2=pd.read_csv("data_clean_author.csv", index_col=0)
 df2["author"] = df2["author_clean"].apply(lambda x: x.split(','))
 
 
-allauthors = np.concatenate(df2["author"]).tolist()
+allauthors = np.concatenate(df2["author"])
 allauthors_clean = set(allauthors)
 print("Total number of authors: "+str(len(allauthors_clean)))
 ## Don't run!
@@ -86,7 +75,7 @@ alljournals = df3["doi"].apply(lambda x: re.match("(.*?)/",x).group())
 alljournalset = list(set(alljournals))
 print("Total number of journals: "+str(len(alljournalset)))
 
-# df2['general_category'] = df2.categories.apply(lambda x: x.split('.')[0])
+df2['general_category'] = df2.categories.apply(lambda x: x.split('.')[0])
 allcats = list(set(df2['general_category']))
 print("Total number of categories: "+str(len(allcats)))
 
@@ -250,7 +239,8 @@ categories_names = set(category_map.keys())
 set(df2["categories"]).difference(categories_names) ## empty set
 categories_names.difference(set(df2["categories"]))
 
-a = df2.groupby(["general_category"]).count()
+a = df2.groupby(["categories"]).count()
+print(a["id"].describe())
 cm = plt.cm.get_cmap('RdYlBu_r')
 Y,X = np.histogram((a["id"]), 149, normed=True)
 x_span = X.std()
@@ -262,12 +252,12 @@ C = [cm(((x-X.min())/x_span)) for x in X]
 # plt.title("Histogram of paper categories");
 # plt.xlabel("Category");
 # plt.ylabel("Number of papers");
-a = df2["general_category"].value_counts().plot(kind='bar',figsize=(14,8),
-                                                   title="Histogram of paper categories", color=C)
+a = df2["general_category"].value_counts().plot(kind='bar',figsize=(14,8),title="Histogram of paper categories", color=C)
 a.set_xlabel("Category")
 a.set_ylabel("Number of papers")
 plt.show()
 
+# alt chart can't show in python console
 # paper_per_cat= df2[["id","general_category"]].groupby(["general_category"]).sum()
 # bar = alt.Chart(paper_per_cat).mark_bar().encode(
 #     x='general_category',
@@ -277,6 +267,8 @@ plt.show()
 #              ).configure_axis(grid=False
 #                               ).configure_view(strokeOpacity=0).interactive()
 
+# below the commented out code adapted from
+# https://www.kaggle.com/artgor/arxiv-metadata-exploration
 # authors_per_paper = defaultdict()
 # df2[["id","author"]].set_index("id").to_dict("list", into = authors_per_paper)
 
@@ -299,49 +291,53 @@ plt.show()
 #         year = None
 #     if year:
 #         if year not in year_categories.keys():
-#             year_categories[year] = defaultdict(int)
 #             # year_abstract_words[year] = defaultdict(int)
+#             year_categories[year] = defaultdict(int)
 #             year_authors[year] = defaultdict(int)
 #         # collect counts of various things over years
-#     if paper['general_category']:
-#         if year:
-#             year_categories[year][paper['general_category']] += 1
 #     # for word in paper['abstract'].replace('\n', ' ').split():
 #     #     if year:
 #     #         year_abstract_words[year][word] += 1
-#     paper_authors = paper["author"]
+#     if paper['general_category']:
+#         if year:
+#             year_categories[year][paper['general_category']] += 1
+#     paper_authors = [x for x in paper["author"] if x == x]
 #     if paper_authors:
 #         if year:
 #             for author in paper_authors:
 #                 year_authors[year][author] += 1
-
-# year_abstract_words_df = pd.DataFrame(year_abstract_words)
-# year_abstract_words_df.to_csv("year_abstract_words.csv")
-
+#
+# # year_abstract_words_df = pd.DataFrame(year_abstract_words)
+# # year_abstract_words_df.to_csv("year_abstract_words.csv")
+#
 # year_authors_df = pd.DataFrame(year_authors)
 # year_authors_df.to_csv("year_authors.csv")
+# # # to index a column:
+# # year_authors_df.iloc[:,0]
+#
 #
 # year_categories_df = pd.DataFrame(year_categories)
 # year_categories_df.to_csv("year_categories.csv")
-
-### run lines below on google colab
+#
+# ### run lines below on google colab
 # year_authors_df = pd.read_csv("year_authors.csv",index_col=0)
 # authors = []
-# names_to_exclude = ['dubna', 'japan','infn','department of physics',
-#                     'the netherlands','trieste','bonn','ukraine','heidelberg',
-#                     'australia','stsci','eso','korea','switzerland', 'israel',
-#                     'canada','mexico', 'caltech','poland', 'cambridge', 'spain',
-#                     'garching', 'india', 'uk', 'et al', 'moscow', 'usa', 'france',
-#                     'russia', 'italy', 'germany','brazil','astronomy',
-#                     'd  collaboration', 'the opal collaboration','the babar collaboration',
-#                     'madrid', 'berkeley', 'mit', 'astrophysics', 'cfa', 'bangalore',
-#                     'chile', 'princeton', 'china', 'nasa gsfc', 'beijing', 'argentina',
-#                     'edinburgh','nrao','roma']
+# # names_to_exclude = ['dubna', 'japan','infn','department of physics',
+# #                     'the netherlands','trieste','bonn','ukraine','heidelberg',
+# #                     'australia','stsci','eso','korea','switzerland', 'israel',
+# #                     'canada','mexico', 'caltech','poland', 'cambridge', 'spain',
+# #                     'garching', 'india', 'uk', 'et al', 'moscow', 'usa', 'france',
+# #                     'russia', 'italy', 'germany','brazil','astronomy',
+# #                     'd  collaboration', 'the opal collaboration','the babar collaboration',
+# #                     'madrid', 'berkeley', 'mit', 'astrophysics', 'cfa', 'bangalore',
+# #                     'chile', 'princeton', 'china', 'nasa gsfc', 'beijing', 'argentina',
+# #                     'edinburgh','nrao','roma']
 # for col in year_authors_df.columns:
 #     top_authors = [i for i in year_authors_df[col].fillna(0).sort_values().index][-10:]
+#     # top_authors = [x for x in top_authors if x == x] # dont need it anymore b/c name.strip() in get_clean
 #     authors.extend(top_authors)
 # authors = list(set(authors))
-#
+
 # year_authors_df1 = year_authors_df.T[authors]
 # year_authors_df1 = year_authors_df1.sort_index()
 # year_authors_df2 = year_authors_df1.reset_index().melt(id_vars=['index'])
@@ -365,7 +361,6 @@ plt.show()
 # fig = px.line(year_categories_df2, x="year", y="count", width = 1500, height = 900, color='category')
 # fig.show()
 
-# distribution of scores by product.Note that it's less "skewed" than before
 
 ## takes long time to run
 ## cat_authors = dict.fromkeys(allcats,[]) # this is wrong
@@ -382,22 +377,32 @@ plt.show()
 # author_cat['authors'] = author_cat['authors'].apply(lambda x: ",".join(x))
 # author_cat.to_csv("authors_by_cat.csv",sep = "\t")
 author_cat=pd.read_csv("authors_by_cat.csv", sep= "\t", index_col=0)
-df2["author"] = author_cat['authors'].apply(lambda x: x.split(','))
+author_cat["authors"] = author_cat['authors'].apply(lambda x: x.split(' , '))
 
 author_cat["num_authors"] = author_cat['authors'].apply(lambda x: len(x))
 print(author_cat["num_authors"].describe().round(2))
 
-import matplotlib.colors as colors
-import matplotlib.cm as cmx
-toplot = author_cat[["categories","num_authors"]]
-toplot.set_index("categories", inplace = True)
-cm = plt.cm.get_cmap("RdYlBu_r")
-cNorm  = colors.Normalize(vmin=0, vmax=toplot["num_authors"].max())
-scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
-a = toplot.plot(kind='bar',figsize=(14,8),title="Histogram of authors per categories", color=scalarMap.to_rgba(toplot["num_authors"]))
-a.set_xlabel("Category")
-a.set_ylabel("Number of authors")
-plt.show()
+## plot with seaborn instead
+# import matplotlib.colors as colors
+# import matplotlib.cm as cmx
+# toplot = author_cat[["categories","num_authors"]]
+# toplot.set_index("categories", inplace = True)
+# cm = plt.cm.get_cmap("RdYlBu_r")
+# cNorm  = colors.Normalize(vmin=0, vmax=toplot["num_authors"].max())
+# scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
+# a = toplot.plot(kind='bar',figsize=(14,8),title="Histogram of authors per categories", color=scalarMap.to_rgba(toplot["num_authors"]))
+# a.set_xlabel("Category")
+# a.set_ylabel("Number of authors")
+# plt.show()
+
+import seaborn as sns
+tips = sns.load_dataset("tips")
+sns.set_theme(font_scale=5)
+
+tips
+fig = sns.catplot(data=author_cat[["categories","num_authors"]], x="categories",y = "num_authors", kind = "bar",height=20, aspect=1.618,palette="ch:.25" )
+fig.set_xticklabels(rotation=90)
+fig.set(ylabel = "number of authors",title = "Histogram of number of authors per category")
 
 
 def countWords(review):
